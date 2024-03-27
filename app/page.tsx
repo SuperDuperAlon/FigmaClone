@@ -7,8 +7,9 @@ import Live from "@/components/Live";
 import Navbar from "@/components/Navbar";
 import RightSidebar from "@/components/RightSidebar";
 import { useEffect, useRef, useState } from "react";
-import { handleCanvasMouseDown, handleResize, initializeFabric } from '@/lib/canvas';
+import { handleCanvasMouseDown, handleCanvasMouseMove, handleCanvasMouseUp, handleResize, initializeFabric, renderCanvas } from '@/lib/canvas';
 import { ActiveElement } from '@/types/type';
+import { useMutation, useStorage } from '@/liveblocks.config';
 
 export default function Page() {
 
@@ -17,6 +18,21 @@ export default function Page() {
   const isDrawing = useRef(false)
   const shapeRef = useRef<fabric.Object | null>(null)
   const selectedShapeRef = useRef<string | null>('rectangle')
+  const activeObjectRef = useRef<fabric.Object | null>(null)
+
+  const canvasObjects = useStorage((root) => root.canvasObjects)
+
+  const syncShapeInStorage = useMutation(({ storage }, object) => {
+    if (!object) return
+
+    const { objectId } = object
+
+    const shapeData = object.toJSON()
+    shapeData.objectId = objectId
+
+    const canvasObjects = storage.get('canvasObjects')
+    canvasObjects.set(objectId, shapeData)
+  }, [])
 
   const [activeElement, setActiveElement] = useState<ActiveElement>({
     name: '',
@@ -37,14 +53,30 @@ export default function Page() {
       handleCanvasMouseDown({ options, canvas, isDrawing, shapeRef, selectedShapeRef })
     })
 
+    canvas.on("mouse:move", (options) => {
+      handleCanvasMouseMove({ options, canvas, isDrawing, shapeRef, selectedShapeRef, syncShapeInStorage })
+    })
+
+    canvas.on("mouse:up", (options) => {
+      handleCanvasMouseUp({ canvas, isDrawing, shapeRef, selectedShapeRef, syncShapeInStorage, setActiveElement, activeObjectRef })
+    })
+
     window.addEventListener("resize", () => {
       handleResize({ fabricRef })
+    })
+  }, [])
+
+  useEffect(() => {
+    renderCanvas({
+      fabricRef,
+      canvasObjects,
+      activeObjectRef
     })
   })
 
   return (
     <main className="h-screen overflow-hidden">
-      <Navbar 
+      <Navbar
         activeElement={activeElement}
         handleActiveElement={handleActiveElement}
       />
